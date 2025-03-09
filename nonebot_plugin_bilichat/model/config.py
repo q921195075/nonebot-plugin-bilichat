@@ -234,6 +234,18 @@ class SubscribeConfig(BaseModel):
     push_delay: int = Field(default=3, title="推送延迟", description="每条推送的延迟, 单位为秒", ge=0)
     users: dict[str, UserInfo] = Field(default={}, title="已订阅用户", description="已添加订阅的用户")
 
+class refuseAddGroupRequestdetailConfig(BaseModel):
+    """自动拒绝加群请求详情配置"""
+    
+    group_id: str = Field(default="", title="群号", description="自动拒绝加群请求的群号")
+    refuse_group_request: bool = Field(default=False, title="自动拒绝加群请求", description="是否自动拒绝加群请求")
+    refuse_level: int = Field(default=10, title="拒绝加群请求等级", description="拒绝加群请求的等级, 不大于该等级自动拒绝")
+
+class refuseAddGroupRequestConfig(BaseModel):
+    """自动拒绝加群请求配置"""
+    
+    group_id: dict[str, refuseAddGroupRequestdetailConfig] = Field(default={}, title="群号", description="自动拒绝加群请求的群号")
+    # refuse_group_request: bool = Field(default=False, title="自动拒绝加群请求", description="是否自动拒绝加群请求")
 
 class Config(BaseModel):
     version: str = Field(
@@ -249,3 +261,4 @@ class Config(BaseModel):
     api: ApiConfig = Field(default=ApiConfig(), title="API 配置", description="API 相关配置")
     analyze: AnalyzeConfig = Field(default=AnalyzeConfig(), title="内容解析配置", description="解析相关配置")
     subs: SubscribeConfig = Field(default=SubscribeConfig(), title="订阅配置", description="推送相关配置")
+    refuse: refuseAddGroupRequestConfig = Field(default=refuseAddGroupRequestConfig(), title="自动拒绝加群请求配置", description="自动拒绝加群请求配置")
