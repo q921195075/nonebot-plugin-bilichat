@@ -107,7 +107,7 @@ async def live():
                         [
                             at_all,
                             Text(f"{up_name} 开播了: {live.title}\n"),
-                            Text(f'开播时间：{time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(up.live_time))}') if up.live_time else Text(""),
+                            Text(f'开播时间：{time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(live.live_time))}') if live.live_time else Text(""),
                             live_cover,
                             Text(f"\nhttps://live.bilibili.com/{live.room_id}"),
                         ]
@@ -115,7 +115,9 @@ async def live():
                     await user.target.send(msg)
         # 下播通知, up.live_status == 1 且 live.live_status != 1
         elif up.live_status == 1:
-            up.live_stop_time = time.time()
+            if up.live_stop_status:
+                up.live_stop_time = time.time()
+                up.live_stop_status = 0
             for user in up.users:
                 if user.subscribes[str(up.uid)].live == PushType.IGNORE:
                     continue
@@ -129,12 +131,13 @@ async def live():
                     else Text("")
                 )
                 msg = UniMessage([
-                    Text(f"{up_name} 下播了"),
+                    Text(f"{up_name} 下播了\n"),
                     Text(f'下播时间：{time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(up.live_stop_time))}') if up.live_stop_time else Text(""),
                     live_time])
                 await user.target.send(msg)
         up.live_status = live.live_status
         up.live_time = live.live_time or up.live_time
+        up.live_stop_status = 1
 
 
 def set_subs_job():

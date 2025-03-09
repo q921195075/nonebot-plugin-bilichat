@@ -23,6 +23,8 @@ class UPStatus(BaseModel):
     """直播开始时间"""
     live_stop_time: float = 0.0
     """直播结束时间"""
+    live_stop_status: int = 1
+    """直播结束状态, 0: 已推送, 1: 未推送"""
 
     @property
     def users(self) -> list[UserInfo]:

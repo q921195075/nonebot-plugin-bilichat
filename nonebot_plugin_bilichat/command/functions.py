@@ -41,5 +41,11 @@ bili_fetch_content = bilichat.command("fetch", aliases=set(ConfigCTX.get().noneb
 async def fetch_check(state: T_State, msg: UniMsg, target: MsgTarget) -> NoReturn:  # noqa: ARG001
     await bili_fetch_content.finish("WIP")
 
+bili_check_last_live_time = bilichat.command("lastlive", aliases=set(ConfigCTX.get().nonebot.cmd_last_live))
+
+@bili_check_last_live_time.handle()
+async def check_last_live_time(target: MsgTarget, uid: Message = CommandArg()):
+    if not uid:
+        await bili_check_last_live_time.finish("请输入UP主的昵称或uid")
 
 logger.success("Loaded: nonebot_plugin_bilichat.command.functions")

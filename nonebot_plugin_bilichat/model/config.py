@@ -142,6 +142,12 @@ class NoneBotConfig(BaseModel):
         description="`cfg`命令的别名",
         json_schema_extra={"ui:options": {"disabled": True}, "ui:hidden": True},
     )
+    cmd_last_live: list[str] = Field(
+        default=["上次直播时间"],
+        title="查看上次直播时间命令别名",
+        description="`lastlive`命令的别名",
+        json_schema_extra={"ui:options": {"disabled": True}, "ui:hidden": True},
+    )
 
 
 class AnalyzeConfig(BaseModel):
