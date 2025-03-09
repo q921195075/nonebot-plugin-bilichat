@@ -51,12 +51,15 @@ async def bili_login_handle():
             continue
         for auth in auths:
             note = f" ({auth.note})" if auth.note else ""
-            texts.append(f" |-> {auth.uid}{note}")
+            texts.append(f" |-> {auth.uid}")
     await bili_check_login.finish("\n".join(texts) or "无已登录账号")
 
 
 @bili_login_qrcode.handle()
 async def bili_qrcode_login(target: MsgTarget):
+    await bili_login_qrcode.send(
+        "由于通过 Bot 扫码获取的 cookies 缺失一部分数据, 有效期可能较短且无法实时更新, 因此此方法将不再维护, 建议使用 cookiescloud 登录。"
+    )
     async with AsyncClient(
         headers={
             "User-Agent": (

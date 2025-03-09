@@ -14,7 +14,7 @@ local_api: RequestAPI | None = None
 if ConfigCTX.get().api.local_api_config is not None and ConfigCTX.get().api.local_api_config.enable:
     from .local import LOCAL_REQUEST_API_PATH, LOCAL_REQUEST_API_TOKEN
 
-    local_api = RequestAPI(URL(LOCAL_REQUEST_API_PATH), LOCAL_REQUEST_API_TOKEN, 0, "本地 API", local_api=True)
+    local_api = RequestAPI(URL(LOCAL_REQUEST_API_PATH), LOCAL_REQUEST_API_TOKEN, 1, "本地 API", local_api=True)
 
 
 def init_request_apis():
@@ -43,4 +43,4 @@ init_request_apis()
 def get_request_api() -> RequestAPI:
     if not request_apis:
         raise RuntimeError("未找到可用的 Bilichat API 服务, 请在配置文件中添加至少一个 API 服务或启用本地 API")
-    return random.choice(request_apis)
+    return random.choices(request_apis, weights=[api._weight for api in request_apis])[0]
