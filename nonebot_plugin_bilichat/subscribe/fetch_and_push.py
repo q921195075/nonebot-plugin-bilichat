@@ -1,5 +1,6 @@
 import time
 from contextlib import suppress
+from typing import Any
 
 from httpx import AsyncClient
 from nonebot.log import logger
@@ -11,10 +12,17 @@ from nonebot_plugin_bilichat.config import ConfigCTX
 from nonebot_plugin_bilichat.lib.tools import calc_time_total
 from nonebot_plugin_bilichat.model.exception import AbortError
 from nonebot_plugin_bilichat.request_api import get_request_api
-from nonebot_plugin_bilichat.subscribe.status import PushType, UPStatus
+from nonebot_plugin_bilichat.subscribe.status import PushType, UPStatus, UserInfo
 
 from .status import SubsStatus
 
+
+async def push_msg(user: UserInfo, msg: str | UniMessage[Any]):
+    try:
+        await user.target.send(msg, fallback=ConfigCTX.get().nonebot.fallback)
+    except Exception as e:
+        capture_exception(e)
+        logger.exception(e)
 
 async def dynamic():
     logger.debug("[Dynamic] 检查新动态")
@@ -62,7 +70,7 @@ async def dynamic():
                     msg = UniMessage([at_all, Text(f"{up_name} 发布了新动态\n"), dyn_img, Text(f"\n{content.b23}")])
                     target = user.target
                     logger.debug(f"target: {target}")
-                    await user.target.send(msg)
+                    await push_msg(user, msg)
         except Exception as e:
             capture_exception(e)
             logger.exception(e)
@@ -91,60 +99,62 @@ async def live():
         if up.name != live.uname:
             up.set_name(live.uname)
         logger.debug(f"[Live] UP {up.name}({up.uid}) 直播状态: {live.live_status} 历史状态: {up.live_status}")
-        # 第一次获取, 仅更新状态
-        if up.live_status == -1:
-            up.live_status = live.live_status
-            continue
-        # 正在直播, live.live_status == 1
-        if live.live_status == 1:
-            # 开播通知, up.live_status != 1
-            if up.live_status != 1:
-                cover = (await AsyncClient().get(live.cover_from_user)).content
-                live_cover = Image(raw=cover)
-                for user in up.users:
+        try:
+            # 第一次获取, 仅更新状态
+            if up.live_status == -1:
+                up.live_status = live.live_status
+                continue
+            # 正在直播, live.live_status == 1
+            if live.live_status == 1:
+                # 开播通知, up.live_status != 1
+                if up.live_status != 1:
+                    cover = (await AsyncClient().get(live.cover_from_user)).content
+                    live_cover = Image(raw=cover)
+                    for user in up.users:
+                        if user.subscribes_dict[up.uid].live == PushType.IGNORE:
+                            continue
+                        logger.info(f"[Live] 推送 UP {up.name}({up.uid}) 开播给用户 {user.id}")
+                        up_info = user.subscribes_dict[up.uid]
+                        up_info.uname = up.name  # 更新up名字
+                        up_name = up_info.nickname or up_info.uname
+                        at_all = AtAll() if user.subscribes_dict[up.uid].live == PushType.AT_ALL else Text("")
+                        msg = UniMessage(
+                            [
+                                at_all,
+                                Text(f"{up_name} 开播了: {live.title}\n"),
+                                Text(f'开播时间：{time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(live.live_time))}') if live.live_time else Text(""),
+                            live_cover,
+                                Text(f"\nhttps://live.bilibili.com/{live.room_id}"),
+                            ]
+                        )
+                        await push_msg(user, msg)
+            # 下播通知, up.live_status == 1 且 live.live_status != 1
+            elif up.live_status == 1:
+                if up.live_stop_status:
+                    up.live_stop_time = time.time()
+                    up.live_stop_status = 0
+            for user in up.users:
                     if user.subscribes_dict[up.uid].live == PushType.IGNORE:
                         continue
-                    logger.info(f"[Live] 推送 UP {up.name}({up.uid}) 开播给用户 {user.id}")
+                    logger.info(f"[Live] 推送 UP {up.name}({up.uid}) 下播给用户 {user.id}")
                     up_info = user.subscribes_dict[up.uid]
                     up_info.uname = up.name  # 更新up名字
                     up_name = up_info.nickname or up_info.uname
-                    at_all = AtAll() if user.subscribes_dict[up.uid].live == PushType.AT_ALL else Text("")
-                    msg = UniMessage(
-                        [
-                            at_all,
-                            Text(f"{up_name} 开播了: {live.title}\n"),
-                            Text(f'开播时间：{time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(live.live_time))}') if live.live_time else Text(""),
-                            live_cover,
-                            Text(f"\nhttps://live.bilibili.com/{live.room_id}"),
-                        ]
+                    live_time = (
+                        Text(
+                            f"\n本次直播时长 {calc_time_total(time.time() - up.live_time)}\n直播时间由 bilibili 返回, 不代表真实直播时间, 仅供参考"
+                        )
+                        if up.live_time > 1500000000
+                        else Text("")
                     )
-                    await user.target.send(msg)
-        # 下播通知, up.live_status == 1 且 live.live_status != 1
-        elif up.live_status == 1:
-            if up.live_stop_status:
-                up.live_stop_time = time.time()
-                up.live_stop_status = 0
-            for user in up.users:
-                if user.subscribes_dict[up.uid].live == PushType.IGNORE:
-                    continue
-                logger.info(f"[Live] 推送 UP {up.name}({up.uid}) 下播给用户 {user.id}")
-                up_info = user.subscribes_dict[up.uid]
-                up_info.uname = up.name  # 更新up名字
-                up_name = up_info.nickname or up_info.uname
-                live_time = (
-                    Text(
-                        f"\n本次直播时长 {calc_time_total(time.time() - up.live_time)}\n直播时间由 bilibili 返回, 不代表真实直播时间, 仅供参考"
-                    )
-                    if up.live_time > 1500000000
-                    else Text("")
-                )
-                msg = UniMessage([
+                    msg = UniMessage([
                     Text(f"{up_name} 下播了\n"),
                     Text(f'下播时间：{time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(up.live_stop_time))}') if up.live_stop_time else Text(""),
                     live_time])
-                await user.target.send(msg)
-        up.live_status = live.live_status
-        up.live_time = live.live_time or up.live_time
+                    await push_msg(user, msg)
+        finally:
+            up.live_status = live.live_status
+            up.live_time = live.live_time or up.live_time
         up.live_stop_status = 1
 
 

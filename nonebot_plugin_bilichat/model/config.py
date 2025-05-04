@@ -34,6 +34,12 @@ class NoneBotConfig(BaseModel):
         description="是否拦截事件(防止其他插件二次解析)",
         json_schema_extra={"ui:options": {"disabled": True}},
     )
+    fallback: bool = Field(
+        default=True,
+        title="启用发送失败回退",
+        description="是否启用 Alconna 的发送失败回退机制",
+        json_schema_extra={"ui:options": {"disabled": True}},
+    )
     enable_self: bool = Field(
         default=False,
         title="响应自身的消息",
@@ -203,7 +209,7 @@ class RequestApiInfo(BaseModel):
     api: str = Field(default=..., title="API 地址", description="API 地址")
     token: str = Field(default=..., title="API Token", description="API Token, 服务端未设置则留空")
     weight: int = Field(default=1, title="权重", description="权重, 用于负载均衡, 越大越优先")
-    enabled: bool = Field(default=True, title="是否启用", description="是否启用")
+    enable: bool = Field(default=True, title="是否启用", description="是否启用")
     note: str = Field(default="", title="备注", description="备注")
 
 

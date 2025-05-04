@@ -20,9 +20,21 @@ def v6_1_2(raw_config: dict) -> dict:
     return raw_config
 
 
+def v6_2_5(raw_config: dict) -> dict:
+    logger.info("Migrating 6.2.0 --> 6.2.5")
+    raw_config["version"] = "6.2.5"
+    for api in raw_config["api"]["request_api"]:
+        api: dict
+        api["enable"] = api["enabled"]
+        api.pop("enabled", None)
+    return raw_config
+
+
 def migrate(raw_config: dict):
     version = Version(raw_config.get("version", "0.0.0"))
     if version <= Version("6.1.2"):
         raw_config = v6_1_2(raw_config)
+    if version <= Version("6.2.5"):
+        raw_config = v6_2_5(raw_config)
 
     return raw_config
