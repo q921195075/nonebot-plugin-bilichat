@@ -274,6 +274,7 @@ class refuseAddGroupRequestConfig(BaseModel):
     group_id: dict[str, refuseAddGroupRequestdetailConfig] = Field(default={}, title="群号", description="自动拒绝加群请求的群号")
     # refuse_group_request: bool = Field(default=False, title="自动拒绝加群请求", description="是否自动拒绝加群请求")
 
+
 class Config(BaseModel):
     version: str = Field(
         default=version("nonebot_plugin_bilichat"),

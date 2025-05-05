@@ -29,7 +29,7 @@ DEFUALT_DYNAMIC_PUSH_TYPE: dict[DynamicType, PushType] = {
 
 
 class UP(BaseModel):
-    uid: int
+    uid: int | str
     """UP主UID"""
     uname: str = ""
     """UP主B站用户名"""
@@ -41,12 +41,15 @@ class UP(BaseModel):
     """各种类型动态推送方式"""
     live: PushType = PushType.PUSH
     """直播推送方式"""
-
+    platform: str = "bilibili"
+    """推送平台, 默认为bilibili\n目前包含bilibili和douyin"""
+    nickcover: str = ""
+    """直播推送配图, 可自行设置, 目前是本地路径，建议绝对路径"""
 
 class UserInfo(BaseModel):
     info: Session = Field(json_schema_extra={"ui:hidden": True})
     """用户身份信息, 请勿手动添加或修改"""
-    subscribes_dict: dict[int, UP] = Field(default={}, alias="subscribes", exclude=True)
+    subscribes_dict: dict[int | str, UP] = Field(default={}, alias="subscribes", exclude=True)
     """订阅的UP主, UP.uid: UP"""
 
     @computed_field
@@ -97,5 +100,13 @@ class UserInfo(BaseModel):
             self.subscribes_dict[up.uid] = up
         elif uid and uname:
             self.subscribes_dict[int(uid)] = UP(uid=int(uid), uname=uname)
+        else:
+            raise ValueError("uid uname 和 up 不能同时为空")
+    
+    def add_douyin_subscription(self, *, uid: int | str | None = None, uname: str | None = None, up: UP | None = None):
+        if up:
+            self.subscribes_dict[up.uid] = up
+        elif uid and uname:
+            self.subscribes_dict[uid] = UP(uid=uid, uname=uname)
         else:
             raise ValueError("uid uname 和 up 不能同时为空")

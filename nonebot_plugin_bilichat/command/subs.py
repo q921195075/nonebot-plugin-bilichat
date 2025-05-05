@@ -11,11 +11,16 @@ from nonebot_plugin_bilichat.request_api import get_request_api
 from nonebot_plugin_bilichat.subscribe.status import SubsStatus, UPStatus
 
 from ..config import ConfigCTX
+from ..douyin import douyin
 from .base import bilichat, check_lock, get_user
 
 bili_add_sub = bilichat.command("sub", permission=ADMIN() | SUPERUSER, aliases=set(ConfigCTX.get().nonebot.cmd_add_sub))
 bili_remove_sub = bilichat.command(
     "unsub", permission=ADMIN() | SUPERUSER, aliases=set(ConfigCTX.get().nonebot.cmd_remove_sub)
+)
+bili_add_douyin_sub = bilichat.command("douyinsub", permission=ADMIN() | SUPERUSER, aliases={"关注抖音"})
+bili_remove_douyin_sub = bilichat.command(
+    "douyinunsub", permission=ADMIN() | SUPERUSER, aliases={"取关抖音"}
 )
 bili_check_sub = bilichat.command("check", aliases=set(ConfigCTX.get().nonebot.cmd_check_sub))
 
@@ -48,7 +53,7 @@ async def remove_sub(user: UserInfo = Depends(get_user), msg: Message = CommandA
     async with lock:
         # 获取 UP 对象
         if not msg:
-            await bili_add_sub.finish("请输入 UP 主的昵称或 UID")
+            await bili_remove_sub.finish("请输入 UP 主的昵称或 UID")
         config = ConfigCTX.get()
         keyword = msg.extract_plain_text().strip()
         logger.info(f"keyword: {keyword}")
@@ -56,15 +61,59 @@ async def remove_sub(user: UserInfo = Depends(get_user), msg: Message = CommandA
             user.subscribes_dict.clear()
             config.subs.users_dict[user.id] = user
             ConfigCTX.set()
-            await bili_add_sub.finish("已经成功取关本会话订阅的全部 UP 主")
+            await bili_remove_sub.finish("已经成功取关本会话订阅的全部 UP 主")
         for up in user.subscribes_dict.values():
             if keyword in (up.uname, up.nickname) or str(up.uid) == keyword.lower().replace("uid:", "").strip():
                 user.subscribes_dict.pop(up.uid)
                 config.subs.users_dict[user.id] = user
                 ConfigCTX.set()
-                await bili_add_sub.finish(f"已经成功取关 UP {up.nickname or up.uname}({up.uid})")
-        await bili_add_sub.finish("未找到该 UP 主")
+                await bili_remove_sub.finish(f"已经成功取关 UP {up.nickname or up.uname}({up.uid})")
+        await bili_remove_sub.finish("未找到该 UP 主")
 
+@bili_add_douyin_sub.handle()
+async def add_douyin_sub(user: UserInfo = Depends(get_user), msg: Message = CommandArg(), lock: Lock = Depends(check_lock)):
+    async with lock:
+        # 获取 UP 对象
+        if not msg:
+            await bili_add_douyin_sub.finish("请输入主播抖音号")
+        up = await douyin.get_douyin_stream_data_list([f"https://live.douyin.com/{msg.extract_plain_text()}"])
+        if not up:
+            await bili_add_douyin_sub.finish(f"未找到 UP {msg.extract_plain_text()}")
+        # elif isinstance(up, list):
+        #     upstr = "\n".join([str(u) for u in up])
+        #     await bili_add_douyin_sub.finish(f"未找到 UP {msg.extract_plain_text()}, 猜你想找: \n{upstr}")
+        # 添加订阅
+        up = up[0]
+        user.add_subscription(uid=up.id_str, uname=up.anchor_name)
+        config = ConfigCTX.get()
+        config.subs.users_dict[user.id] = user
+        ConfigCTX.set()
+        if up.id_str not in SubsStatus.online_ups_cache:
+            SubsStatus.online_ups_cache[up.id_str] = UPStatus(uid=up.id_str, name=up.anchor_name, platform="douyin")
+    await bili_add_douyin_sub.finish(f"已经成功订阅 UP {up.anchor_name}({up.id_str})")
+
+
+@bili_remove_douyin_sub.handle()
+async def remove_douyin_sub(user: UserInfo = Depends(get_user), msg: Message = CommandArg(), lock: Lock = Depends(check_lock)):
+    async with lock:
+        # 获取 UP 对象
+        if not msg:
+            await bili_remove_douyin_sub.finish("请输入主播抖音号")
+        config = ConfigCTX.get()
+        keyword = msg.extract_plain_text().strip()
+        logger.info(f"keyword: {keyword}")
+        if keyword in ["all", "全部"]:
+            user.subscribes_dict.clear()
+            config.subs.users_dict[user.id] = user
+            ConfigCTX.set()
+            await bili_remove_douyin_sub.finish("已经成功取关本会话订阅的全部 UP 主")
+        for up in user.subscribes_dict.values():
+            if keyword in (up.uname, up.nickname) or str(up.uid) == keyword.lower().replace("uid:", "").strip():
+                user.subscribes_dict.pop(up.uid)
+                config.subs.users_dict[user.id] = user
+                ConfigCTX.set()
+                await bili_remove_douyin_sub.finish(f"已经成功取关 UP {up.nickname or up.uname}({up.uid})")
+        await bili_remove_douyin_sub.finish("未找到该 UP 主")
 
 @bili_check_sub.handle()
 async def check_sub(user: UserInfo = Depends(get_user), lock: Lock = Depends(check_lock)):

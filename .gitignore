@@ -10,12 +10,15 @@ venv
 .pdm-python
 .pdm.toml
 pdm.lock
+uv.lock
 
 .env
 logs
 bot.py
 qrcode.png
+config.yaml
 
 cookies.json
 
+offline_send_email.py
 nonebot2-local-store.lnk

@@ -11,7 +11,7 @@ from nonebot_plugin_bilichat.model.subscribe import PushType, UserInfo
 
 
 class UPStatus(BaseModel):
-    uid: int
+    uid: int | str
     """up主的mid"""
     name: str
     """up主的名字"""
@@ -19,14 +19,15 @@ class UPStatus(BaseModel):
     """最新的动态id"""
     live_status: int = -1
     """直播状态, 0: 未开播, 1: 开播, 2: 轮播"""
-    live_time: int = 0
+    live_time: int | float = 0
     """直播开始时间"""
     live_stop_time: float = 0.0
     """直播结束时间"""
     live_stop_status: int = 1
     """直播结束状态, 0: 已推送, 1: 未推送"""
-    live_time: int = 0
-    """直播开始时间"""
+    platform: str = "bilibili"
+    """推送平台, 默认为bilibili\n目前包含bilibili和douyin"""
+    
     
     def set_name(self, name: str) -> None:
         self.name = name
@@ -44,7 +45,7 @@ class SubsStatus:
     """在线的用户"""
     modify_lock = Lock()
     """用户锁"""
-    online_ups_cache: dict[int, UPStatus] = {}  # noqa: RUF012
+    online_ups_cache: dict[int | str, UPStatus] = {}  # noqa: RUF012
     """已激活的up主缓存, up.uid: UPStatus"""
 
     @classmethod
@@ -78,9 +79,30 @@ class SubsStatus:
         online_ups: list[UPStatus] = []
         for user in cls.online_users.values():
             for up in user.subscribes_dict.values():
-                if (type_ == "dynamic" and all(b == PushType.IGNORE for b in up.dynamic.values())) or (
-                    type_ == "live" and up.live == PushType.IGNORE
-                ):
+                if (up.platform != "bilibili") or (
+                    type_ == "dynamic" and all(b == PushType.IGNORE for b in up.dynamic.values())) or (
+                    type_ == "live" and up.live == PushType.IGNORE):
+                    continue
+                up_status = cls.online_ups_cache.get(up.uid, UPStatus(uid=up.uid, name=up.uname))
+                cls.online_ups_cache[up.uid] = up_status
+                if up_status not in online_ups:
+                    online_ups.append(up_status)
+
+        if not online_ups:
+            raise AbortError(f"{type_} 类型没有需要推送的up主, 跳过")
+
+        return online_ups
+    
+    @classmethod
+    async def get_online_douyin_ups(cls, type_: Literal["dynamic", "live"]) -> list[UPStatus]:
+        await cls.refresh_online_users()
+        if not cls.online_users:
+            raise AbortError("没有可用激活的用户, 跳过")
+
+        online_ups: list[UPStatus] = []
+        for user in cls.online_users.values():
+            for up in user.subscribes_dict.values():
+                if (up.platform == "bilibili") or (type_ == "live" and up.live == PushType.IGNORE):
                     continue
                 up_status = cls.online_ups_cache.get(up.uid, UPStatus(uid=up.uid, name=up.uname))
                 cls.online_ups_cache[up.uid] = up_status

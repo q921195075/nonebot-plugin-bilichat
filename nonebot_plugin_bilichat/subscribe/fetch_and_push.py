@@ -15,6 +15,7 @@ from nonebot_plugin_bilichat.request_api import get_request_api
 from nonebot_plugin_bilichat.subscribe.status import PushType, UPStatus, UserInfo
 
 from .status import SubsStatus
+from ..douyin import douyin
 
 
 async def push_msg(user: UserInfo, msg: str | UniMessage[Any]):
@@ -36,7 +37,7 @@ async def dynamic():
             logger.debug(f"[Dynamic] 获取 UP {up.name}({up.uid}) 动态")
             api = get_request_api()
             try:
-                all_dyns = await api.subs_dynamic(up.uid)
+                all_dyns = await api.subs_dynamic(int(up.uid))
                 if not all_dyns:
                     logger.info(f"[Dynamic] UP {up.name}({up.uid}) 未发布动态")
                     continue
@@ -86,12 +87,12 @@ async def live():
         return
     api = get_request_api()
     try:
-        lives = {lv.uid: lv for lv in await api.sub_lives([up.uid for up in ups])}
+        lives = {lv.uid: lv for lv in await api.sub_lives([int(up.uid) for up in ups])}
     except Exception as e:
         logger.error(f"[Live] 获取直播信息失败: {e}")
         return
     for up in ups:
-        live = lives.get(up.uid, None)
+        live = lives.get(int(up.uid), None)
         if not live:
             logger.info(f"[Live] 未查询到 UP {up.name}({up.uid}) 直播间信息, 可能是 UP 没有直播间")
             continue
@@ -157,6 +158,85 @@ async def live():
             up.live_time = live.live_time or up.live_time
         up.live_stop_status = 1
 
+async def douyin_live():
+    logger.debug("[Live] 检查抖音直播状态")
+    try:
+        ups: list[UPStatus] = await SubsStatus.get_online_douyin_ups("live")
+    except AbortError:
+        logger.debug("[Live] 抖音没有需要推送的用户, 跳过")
+        return
+    try:
+        lives = {lv.id_str: lv for lv in await douyin.get_douyin_stream_data_list([str(up.uid) for up in ups])}
+    except Exception as e:
+        logger.error(f"[Live] 获取直播信息失败: {e}")
+        return
+    for up in ups:
+        live = lives.get(str(up.uid), None)
+        if not live:
+            logger.info(f"[Live] 未查询到 UP {up.name}({up.uid}) 直播间信息, 可能是 UP 没有直播间")
+            continue
+        # 更新up名字, 并写入配置文件
+        if up.name != live.anchor_name:
+            up.set_name(live.anchor_name)
+        logger.debug(f"[Live] UP {up.name}({up.uid}) 直播状态: {0 if live.status == 4 else 1} 历史状态: {up.live_status}")
+        try:
+            # 第一次获取, 仅更新状态
+            if up.live_status == -1:
+                up.live_status = 0 if live.status == 4 else 1
+                continue
+            # 正在直播, live.status != 4
+            if live.status != 4:
+                # 开播通知, up.live_status != 1
+                if up.live_status != 1:
+                    cover = (await AsyncClient().get(live.cover["url_list"][0])).content
+                    live_cover = Image(raw=cover)
+                    for user in up.users:
+                        if user.subscribes_dict[up.uid].live == PushType.IGNORE:
+                            continue
+                        logger.info(f"[Live] 推送 UP {up.name}({up.uid}) 开播给用户 {user.id}")
+                        up_info = user.subscribes_dict[up.uid]
+                        up_info.uname = up.name  # 更新up名字
+                        up_name = up_info.nickname or up_info.uname
+                        live_cover = Image(path = up_info.nickcover) if up_info.nickcover else live_cover
+                        at_all = AtAll() if user.subscribes_dict[up.uid].live == PushType.AT_ALL else Text("")
+                        msg = UniMessage(
+                            [
+                                at_all,
+                                Text(f"{up_name} 开播了: {live.title}\n"),
+                                Text(f'开播时间：{time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))}\n'),
+                                Text(f"直播时间仅供参考\n"),
+                            live_cover,
+                                Text(f"\nhttps://live.douyin.com/{live.id_str}"),
+                            ]
+                        )
+                        await push_msg(user, msg)
+            # 下播通知, up.live_status == 1 且 live.live_status != 1
+            elif up.live_status == 1:
+                if up.live_stop_status:
+                    up.live_stop_time = time.time()
+                    up.live_stop_status = 0
+            for user in up.users:
+                    if user.subscribes_dict[up.uid].live == PushType.IGNORE:
+                        continue
+                    logger.info(f"[Live] 推送 UP {up.name}({up.uid}) 下播给用户 {user.id}")
+                    up_info = user.subscribes_dict[up.uid]
+                    up_info.uname = up.name  # 更新up名字
+                    up_name = up_info.nickname or up_info.uname
+                    live_time = (
+                        Text(
+                            f"\n本次直播时长 {calc_time_total(time.time() - up.live_time)}\n直播时间仅供参考"
+                        )
+                        if up.live_time > 1500000000
+                        else Text("")
+                    )
+                    msg = UniMessage([
+                    Text(f"{up_name} 下播了\n"),
+                    Text(f'下播时间：{time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(up.live_stop_time))}') if up.live_stop_time else Text(""),
+                    live_time])
+                    await push_msg(user, msg)
+        finally:
+            up.live_status = 0 if live.status == 4 else 1
+        up.live_stop_status = 1
 
 def set_subs_job():
     if dynamic_interval := ConfigCTX.get().subs.dynamic_interval:
@@ -179,11 +259,22 @@ def set_subs_job():
             jitter=ConfigCTX.get().subs.live_interval // 2,
             max_instances=1,
         )
+    # if douyin_live_interval := ConfigCTX.get().subs.live_interval:
+    #     logger.info(f"启动直播检查定时任务, 间隔 {douyin_live_interval} 秒")
+    #     scheduler.add_job(
+    #         douyin_live,
+    #         "interval",
+    #         id="bilichat_douyin_live",
+    #         seconds=ConfigCTX.get().subs.live_interval,
+    #         jitter=ConfigCTX.get().subs.live_interval // 2,
+    #         max_instances=1,
+    #     )
 
 
 def reset_subs_job():
     scheduler.remove_job("bilichat_dynamic")
     scheduler.remove_job("bilichat_live")
+    scheduler.remove_job("bilichat_douyin_live")
     set_subs_job()
     logger.info("已重置订阅定时任务")
     return True
